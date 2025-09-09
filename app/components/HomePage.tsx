@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,26 +14,25 @@ import {
   MapPin, 
   Star, 
   Zap, 
-  TrendingUp,
   Calendar,
   Dumbbell,
   Camera,
   ArrowRight,
   Sparkles,
-  Target,
   Clock,
-  X,
   MessageSquare,
   UserPlus,
   Check,
   Loader2,
-  Info,
-  Send
+  Send,
+  Building2,
+  Plus,
+  MoreHorizontal
 } from "lucide-react"
 import { toast } from "sonner"
 
 // Types
-interface Partner {
+interface Connection {
   id: string
   name: string
   avatar: string
@@ -45,9 +44,8 @@ interface Partner {
   rating: number
   isOnline: boolean
   lastSeen: string
-  workoutPreferences: string[]
-  availability: string[]
-  photos?: string[]
+  lastMessage?: string
+  unreadCount?: number
 }
 
 interface ChatMessage {
@@ -58,8 +56,8 @@ interface ChatMessage {
   timestamp: string
 }
 
-// Mock data for featured connections
-const featuredConnections: Partner[] = [
+// Mock data for Fit Connect
+const fitConnections: Connection[] = [
   {
     id: "1",
     name: "Sarah Johnson",
@@ -72,9 +70,8 @@ const featuredConnections: Partner[] = [
     rating: 4.8,
     isOnline: true,
     lastSeen: "2 min ago",
-    workoutPreferences: ["Weightlifting", "Cardio", "CrossFit"],
-    availability: ["Monday", "Wednesday", "Friday", "Saturday"],
-    photos: ["/placeholder-user.jpg", "/placeholder-user.jpg", "/placeholder-user.jpg"]
+    lastMessage: "Ready for our workout tomorrow?",
+    unreadCount: 2
   },
   {
     id: "2",
@@ -88,9 +85,8 @@ const featuredConnections: Partner[] = [
     rating: 4.9,
     isOnline: true,
     lastSeen: "5 min ago",
-    workoutPreferences: ["Running", "Cycling", "Swimming"],
-    availability: ["Tuesday", "Thursday", "Saturday", "Sunday"],
-    photos: ["/placeholder-user.jpg", "/placeholder-user.jpg", "/placeholder-user.jpg"]
+    lastMessage: "Great session today! 💪",
+    unreadCount: 0
   },
   {
     id: "3",
@@ -104,9 +100,23 @@ const featuredConnections: Partner[] = [
     rating: 4.7,
     isOnline: false,
     lastSeen: "1 hour ago",
-    workoutPreferences: ["Yoga", "Walking", "Swimming"],
-    availability: ["Monday", "Tuesday", "Thursday", "Sunday"],
-    photos: ["/placeholder-user.jpg", "/placeholder-user.jpg", "/placeholder-user.jpg"]
+    lastMessage: "Thanks for the motivation!",
+    unreadCount: 1
+  },
+  {
+    id: "4",
+    name: "Alex Rodriguez",
+    avatar: "/placeholder-user.jpg",
+    age: 30,
+    location: "Miami, FL",
+    fitnessLevel: "Advanced",
+    goals: ["Bodybuilding", "Strength"],
+    bio: "Competitive bodybuilder looking for serious training partners.",
+    rating: 4.9,
+    isOnline: false,
+    lastSeen: "3 hours ago",
+    lastMessage: "Let's hit the gym this weekend",
+    unreadCount: 0
   }
 ]
 
@@ -129,186 +139,25 @@ const mockChatMessages: { [key: string]: ChatMessage[] } = {
   ]
 }
 
-const quickStats = [
-  {
-    title: "Active Connections",
-    value: "12",
-    icon: Users,
-    color: "from-blue-500 to-purple-500",
-    change: "+3 this week"
-  },
-  {
-    title: "Workouts Completed",
-    value: "24",
-    icon: Target,
-    color: "from-green-500 to-teal-500",
-    change: "+8 this month"
-  },
-  {
-    title: "Calories Burned",
-    value: "12,450",
-    icon: Zap,
-    color: "from-orange-500 to-red-500",
-    change: "+2,100 this week"
-  },
-  {
-    title: "Streak Days",
-    value: "15",
-    icon: TrendingUp,
-    color: "from-purple-500 to-pink-500",
-    change: "Personal best!"
-  }
-]
-
-const upcomingWorkouts = [
-  {
-    id: "1",
-    title: "Morning Cardio Session",
-    time: "7:00 AM",
-    date: "Today",
-    partner: "Sarah Johnson",
-    type: "Cardio",
-    duration: "45 min"
-  },
-  {
-    id: "2",
-    title: "Strength Training",
-    time: "6:00 PM",
-    date: "Tomorrow",
-    partner: "Mike Chen",
-    type: "Strength",
-    duration: "60 min"
-  },
-  {
-    id: "3",
-    title: "Yoga Flow",
-    time: "8:00 AM",
-    date: "Friday",
-    partner: "Emma Wilson",
-    type: "Flexibility",
-    duration: "30 min"
-  }
-]
-
 export default function HomePage() {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState("connections")
-  const [partners, setPartners] = useState<Partner[]>([])
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const [isDragging, setIsDragging] = useState(false)
-  const [sendingRequest, setSendingRequest] = useState(false)
-  const [showProfile, setShowProfile] = useState(false)
-  const [selectedPartner, setSelectedPartner] = useState<Partner | null>(null)
+  const [connections, setConnections] = useState<Connection[]>(fitConnections)
   const [chatMessages, setChatMessages] = useState<{ [key: string]: ChatMessage[] }>(mockChatMessages)
   const [newMessage, setNewMessage] = useState("")
   const [sendingMessage, setSendingMessage] = useState(false)
-  const [selectedChatPartner, setSelectedChatPartner] = useState<Partner | null>(null)
+  const [selectedChatPartner, setSelectedChatPartner] = useState<Connection | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
-  const cardRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    setPartners(featuredConnections)
-  }, [])
-
-  const currentPartner = partners[currentIndex]
-
-  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    
-    setDragStart({ x: clientX, y: clientY })
-    setIsDragging(true)
-  }
-
-  const handleDragMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDragging) return
-    
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-    
-    setDragOffset({
-      x: clientX - dragStart.x,
-      y: clientY - dragStart.y
-    })
-  }
-
-  const handleDragEnd = () => {
-    if (!isDragging) return
-    
-    const threshold = 100
-    const rotation = dragOffset.x * 0.1
-    
-    if (Math.abs(dragOffset.x) > threshold) {
-      if (dragOffset.x > 0) {
-        handleLike()
-      } else {
-        handlePass()
-      }
-    }
-    
-    setDragOffset({ x: 0, y: 0 })
-    setIsDragging(false)
-  }
-
-  const handleLike = async () => {
-    if (!currentPartner || sendingRequest) return
-    
-    setSendingRequest(true)
-
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Remove current partner from stack
-      setPartners(prev => prev.filter(p => p.id !== currentPartner.id))
-      
-      toast.success(`Liked ${currentPartner.name}!`, {
-        description: "They'll receive a notification and can accept your request.",
-        duration: 4000,
-      })
-      
-      // Move to next card
-      setCurrentIndex(0)
-      
-    } catch (error) {
-      toast.error("Failed to send like", {
-        description: "Please try again.",
-        duration: 4000,
-      })
-    } finally {
-      setSendingRequest(false)
-    }
-  }
-
-  const handlePass = () => {
-    if (!currentPartner) return
-    
-    // Remove current partner from stack
-    setPartners(prev => prev.filter(p => p.id !== currentPartner.id))
-    setCurrentIndex(0)
-    
-    toast.success(`Passed on ${currentPartner.name}`, {
-      duration: 2000,
-    })
-  }
-
-  const openProfile = (partner: Partner) => {
-    setSelectedPartner(partner)
-    setShowProfile(true)
-  }
-
-  const openChat = (partner: Partner) => {
-    setSelectedChatPartner(partner)
+  const openChat = (connection: Connection) => {
+    setSelectedChatPartner(connection)
     setIsChatOpen(true)
   }
 
-  const sendMessage = async (partnerId: string) => {
+  const sendMessage = async (connectionId: string) => {
     if (!newMessage.trim() || sendingMessage) return
     
-    const partner = partners.find(p => p.id === partnerId) || selectedChatPartner
-    if (!partner) return
+    const connection = connections.find(c => c.id === connectionId) || selectedChatPartner
+    if (!connection) return
     
     setSendingMessage(true)
     
@@ -326,7 +175,7 @@ export default function HomePage() {
       
       setChatMessages(prev => ({
         ...prev,
-        [partnerId]: [...(prev[partnerId] || []), message]
+        [connectionId]: [...(prev[connectionId] || []), message]
       }))
       setNewMessage("")
       
@@ -347,15 +196,15 @@ export default function HomePage() {
 
         const response: ChatMessage = {
           id: (Date.now() + 1).toString(),
-          senderId: partner.id,
-          senderName: partner.name,
+          senderId: connection.id,
+          senderName: connection.name,
           message: responses[Math.floor(Math.random() * responses.length)],
           timestamp: "Just now"
         }
 
         setChatMessages(prev => ({
           ...prev,
-          [partnerId]: [...(prev[partnerId] || []), response]
+          [connectionId]: [...(prev[connectionId] || []), response]
         }))
       }, 2000 + Math.random() * 3000)
       
@@ -375,14 +224,6 @@ export default function HomePage() {
     }
   }
 
-  const getRotation = () => {
-    return dragOffset.x * 0.1
-  }
-
-  const getOpacity = () => {
-    return 1 - Math.abs(dragOffset.x) / 300
-  }
-
   return (
     <div className="space-y-8">
       {/* Hero Section */}
@@ -400,286 +241,152 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {quickStats.map((stat, index) => (
-          <Card key={index} className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{stat.title}</p>
-                  <p className="text-3xl font-bold mt-2">{stat.value}</p>
-                  <p className="text-xs text-green-600 mt-1">{stat.change}</p>
-                </div>
-                <div className={`w-12 h-12 rounded-lg bg-gradient-to-r ${stat.color} flex items-center justify-center`}>
-                  <stat.icon className="h-6 w-6 text-white" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Main Content Tabs */}
-      <div className="space-y-6">
-        <div className="flex justify-center">
-          <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-lg p-1">
-            <div className="flex space-x-1">
-              <Button
-                variant={activeTab === "connections" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveTab("connections")}
-                className="flex items-center space-x-2"
-              >
-                <Heart className="h-4 w-4" />
-                <span>Featured Connections</span>
-              </Button>
-              <Button
-                variant={activeTab === "upcoming" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveTab("upcoming")}
-                className="flex items-center space-x-2"
-              >
-                <Calendar className="h-4 w-4" />
-                <span>Upcoming Workouts</span>
-              </Button>
+      {/* Fit Connect Section */}
+      <Card className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center space-x-2">
+                <Heart className="h-6 w-6 text-purple-600" />
+                <span>Fit Connect</span>
+              </CardTitle>
+              <CardDescription>
+                Your fitness connections and chat with workout partners
+              </CardDescription>
             </div>
+            <Button variant="outline" size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Find More
+            </Button>
           </div>
-        </div>
-
-        {/* Featured Connections Tab - Tinder Style */}
-        {activeTab === "connections" && (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">Find Your Perfect Workout Partner</h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                Swipe right to like, left to pass. Find your perfect workout buddy!
-              </p>
-            </div>
-
-            <div className="flex justify-center">
-              <div className="relative w-full max-w-sm h-[600px]">
-                {partners.length === 0 ? (
-                  <Card className="w-full h-full flex items-center justify-center bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm">
-                    <CardContent className="text-center">
-                      <Heart className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                      <h3 className="text-xl font-semibold mb-2">No more partners!</h3>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        You've seen all available partners. Check back later for new matches!
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <>
-                    {/* Current Card */}
-                    {currentPartner && (
-                      <Card
-                        ref={cardRef}
-                        className={`absolute inset-0 w-full h-full bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm cursor-grab active:cursor-grabbing transition-transform duration-200 ${
-                          isDragging ? 'scale-105' : ''
-                        }`}
-                        style={{
-                          transform: `translate(${dragOffset.x}px, ${dragOffset.y}px) rotate(${getRotation()}deg)`,
-                          opacity: getOpacity(),
-                          zIndex: 10
-                        }}
-                        onMouseDown={handleDragStart}
-                        onMouseMove={handleDragMove}
-                        onMouseUp={handleDragEnd}
-                        onMouseLeave={handleDragEnd}
-                        onTouchStart={handleDragStart}
-                        onTouchMove={handleDragMove}
-                        onTouchEnd={handleDragEnd}
-                      >
-                        <CardContent className="p-0 h-full relative overflow-hidden rounded-lg">
-                          {/* Photo */}
-                          <div className="relative h-2/3 bg-gradient-to-br from-purple-400 to-pink-400">
-                            <Avatar className="absolute inset-0 w-full h-full rounded-none">
-                              <AvatarImage src={currentPartner.avatar} alt={currentPartner.name} className="object-cover" />
-                              <AvatarFallback className="text-4xl bg-gradient-to-br from-purple-400 to-pink-400 text-white">
-                                {currentPartner.name.slice(0, 2)}
-                              </AvatarFallback>
-                            </Avatar>
-                            
-                            {/* Online Status */}
-                            {currentPartner.isOnline && (
-                              <div className="absolute top-4 right-4 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium">
-                                Online
-                              </div>
-                            )}
-                            
-                            {/* Age Badge */}
-                            <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
-                              <span className="font-semibold text-lg">{currentPartner.age}</span>
-                            </div>
-                          </div>
-
-                          {/* Info */}
-                          <div className="p-4 h-1/3 flex flex-col justify-between">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-xl font-bold">{currentPartner.name}</h3>
-                                <div className="flex items-center space-x-1">
-                                  <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                  <span className="text-sm font-medium">{currentPartner.rating}</span>
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center space-x-1 text-gray-600 dark:text-gray-400 mb-2">
-                                <MapPin className="h-3 w-3" />
-                                <span className="text-sm">{currentPartner.location}</span>
-                              </div>
-                              
-                              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">
-                                {currentPartner.bio}
-                              </p>
-                              
-                              <div className="flex flex-wrap gap-1">
-                                {currentPartner.goals.slice(0, 2).map((goal, index) => (
-                                  <Badge key={index} variant="secondary" className="text-xs">
-                                    {goal}
-                                  </Badge>
-                                ))}
-                                {currentPartner.goals.length > 2 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    +{currentPartner.goals.length - 2}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="absolute bottom-4 right-4 flex space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openProfile(currentPartner)}
-                              className="bg-white/90 backdrop-blur-sm"
-                            >
-                              <Info className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-
-                    {/* Next Card (Preview) */}
-                    {partners.length > 1 && (
-                      <Card className="absolute inset-0 w-full h-full bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm opacity-50 scale-95">
-                        <CardContent className="p-0 h-full relative overflow-hidden rounded-lg">
-                          <div className="relative h-2/3 bg-gradient-to-br from-purple-400 to-pink-400">
-                            <Avatar className="absolute inset-0 w-full h-full rounded-none">
-                              <AvatarImage src={partners[1]?.avatar} alt={partners[1]?.name} className="object-cover" />
-                              <AvatarFallback className="text-4xl bg-gradient-to-br from-purple-400 to-pink-400 text-white">
-                                {partners[1]?.name.slice(0, 2)}
-                              </AvatarFallback>
-                            </Avatar>
-                          </div>
-                          <div className="p-4 h-1/3">
-                            <h3 className="text-xl font-bold">{partners[1]?.name}</h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{partners[1]?.age} • {partners[1]?.fitnessLevel}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </>
-                )}
-
-                {/* Action Buttons */}
-                {partners.length > 0 && (
-                  <div className="absolute -bottom-16 left-1/2 transform -translate-x-1/2 flex space-x-4">
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      onClick={handlePass}
-                      disabled={sendingRequest}
-                      className="w-14 h-14 rounded-full bg-white/90 backdrop-blur-sm border-2 border-red-200 hover:border-red-300 hover:bg-red-50"
-                    >
-                      <X className="h-6 w-6 text-red-500" />
-                    </Button>
-                    
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      onClick={handleLike}
-                      disabled={sendingRequest}
-                      className="w-14 h-14 rounded-full bg-white/90 backdrop-blur-sm border-2 border-green-200 hover:border-green-300 hover:bg-green-50"
-                    >
-                      {sendingRequest ? (
-                        <Loader2 className="h-6 w-6 text-green-500 animate-spin" />
-                      ) : (
-                        <Heart className="h-6 w-6 text-green-500" />
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {connections.map((connection) => (
+              <Card key={connection.id} className="hover:shadow-lg transition-all duration-300 cursor-pointer group">
+                <CardContent className="p-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="relative">
+                      <Avatar className="w-12 h-12">
+                        <AvatarImage src={connection.avatar} alt={connection.name} />
+                        <AvatarFallback className="bg-gradient-to-r from-purple-400 to-pink-400 text-white">
+                          {connection.name.slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {connection.isOnline && (
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
                       )}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Upcoming Workouts Tab */}
-        {activeTab === "upcoming" && (
-          <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">Your Upcoming Workouts</h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                Stay on track with your scheduled sessions
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {upcomingWorkouts.map((workout) => (
-                <Card key={workout.id} className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
-                          <Dumbbell className="h-6 w-6 text-white" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-lg">{workout.title}</h3>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            with {workout.partner} • {workout.duration}
-                          </p>
-                          <div className="flex items-center space-x-4 mt-1">
-                            <div className="flex items-center space-x-1 text-sm text-gray-500">
-                              <Calendar className="h-3 w-3" />
-                              <span>{workout.date}</span>
-                            </div>
-                            <div className="flex items-center space-x-1 text-sm text-gray-500">
-                              <Clock className="h-3 w-3" />
-                              <span>{workout.time}</span>
-                            </div>
-                          </div>
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <h3 className="font-semibold text-sm truncate">{connection.name}</h3>
+                        {connection.unreadCount && connection.unreadCount > 0 && (
+                          <Badge variant="destructive" className="h-5 w-5 p-0 text-xs flex items-center justify-center">
+                            {connection.unreadCount}
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center space-x-1 mb-2">
+                        <Badge variant="secondary" className="text-xs">
+                          {connection.fitnessLevel}
+                        </Badge>
+                        <div className="flex items-center space-x-1">
+                          <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                          <span className="text-xs text-gray-500">{connection.rating}</span>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-3">
-                        <Badge variant="outline">{workout.type}</Badge>
-                        <Button size="sm" variant="outline">
-                          Join
+                      
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
+                        {connection.lastMessage || connection.bio}
+                      </p>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500">{connection.lastSeen}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openChat(connection)}
+                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <MessageSquare className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            <div className="text-center">
-              <Button 
-                size="lg" 
-                variant="outline"
-                className="border-purple-200 text-purple-600 hover:bg-purple-50"
-              >
-                Schedule New Workout
-                <Calendar className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
+
+      {/* Gym Listing Card */}
+      <Card className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
+                <Building2 className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold mb-1">Find Nearby Gyms</h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-2">
+                  Discover fitness centers, check equipment, and find the perfect gym for your workouts
+                </p>
+                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                  <div className="flex items-center space-x-1">
+                    <MapPin className="h-3 w-3" />
+                    <span>12 gyms nearby</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                    <span>4.8 avg rating</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Button className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
+              Browse Gyms
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Exercise Scheduling Card */}
+      <Card className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm hover:shadow-lg transition-all duration-300">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-teal-500 rounded-xl flex items-center justify-center">
+                <Calendar className="h-8 w-8 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold mb-1">Schedule Workouts</h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-2">
+                  Plan your fitness routine, set reminders, and coordinate with your workout partners
+                </p>
+                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                  <div className="flex items-center space-x-1">
+                    <Clock className="h-3 w-3" />
+                    <span>3 workouts this week</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Users className="h-3 w-3" />
+                    <span>2 with partners</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Button className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600">
+              Schedule Now
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm">
@@ -710,22 +417,22 @@ export default function HomePage() {
               className="h-auto p-6 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
             >
               <div className="flex flex-col items-center space-y-2 text-white">
-                <Dumbbell className="h-8 w-8" />
+                <Camera className="h-8 w-8" />
                 <div className="text-center">
-                  <div className="font-semibold">Browse Gyms</div>
-                  <div className="text-xs opacity-90">Find nearby fitness centers</div>
+                  <div className="font-semibold">Form Analysis</div>
+                  <div className="text-xs opacity-90">Check your exercise form</div>
                 </div>
               </div>
             </Button>
             
             <Button
-              className="h-auto p-6 bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600"
+              className="h-auto p-6 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
             >
               <div className="flex flex-col items-center space-y-2 text-white">
-                <Camera className="h-8 w-8" />
+                <Dumbbell className="h-8 w-8" />
                 <div className="text-center">
-                  <div className="font-semibold">Form Analysis</div>
-                  <div className="text-xs opacity-90">Check your exercise form</div>
+                  <div className="font-semibold">Start Workout</div>
+                  <div className="text-xs opacity-90">Begin your fitness session</div>
                 </div>
               </div>
             </Button>
@@ -803,89 +510,6 @@ export default function HomePage() {
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Profile Dialog */}
-      <Dialog open={showProfile} onOpenChange={setShowProfile}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{selectedPartner?.name}'s Profile</DialogTitle>
-          </DialogHeader>
-          {selectedPartner && (
-            <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <Avatar className="h-20 w-20">
-                  <AvatarImage src={selectedPartner.avatar} alt={selectedPartner.name} />
-                  <AvatarFallback>{selectedPartner.name.slice(0, 2)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <h3 className="text-xl font-semibold">{selectedPartner.name}</h3>
-                  <p className="text-gray-600">{selectedPartner.age} years • {selectedPartner.fitnessLevel}</p>
-                  <div className="flex items-center space-x-1 text-gray-500">
-                    <MapPin className="h-4 w-4" />
-                    <span>{selectedPartner.location}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-semibold mb-2">Bio</h4>
-                <p className="text-gray-600">{selectedPartner.bio}</p>
-              </div>
-              
-              <div>
-                <h4 className="font-semibold mb-2">Fitness Goals</h4>
-                <div className="flex flex-wrap gap-2">
-                  {selectedPartner.goals.map((goal, index) => (
-                    <Badge key={index} variant="secondary">{goal}</Badge>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-semibold mb-2">Workout Preferences</h4>
-                <div className="flex flex-wrap gap-2">
-                  {selectedPartner.workoutPreferences.map((pref, index) => (
-                    <Badge key={index} variant="outline">{pref}</Badge>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-semibold mb-2">Availability</h4>
-                <div className="flex flex-wrap gap-2">
-                  {selectedPartner.availability.map((day, index) => (
-                    <Badge key={index} variant="outline">{day}</Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex space-x-2 pt-4">
-                <Button 
-                  className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600"
-                  onClick={() => {
-                    setShowProfile(false)
-                    handleLike()
-                  }}
-                >
-                  <Heart className="h-4 w-4 mr-2" />
-                  Like
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setShowProfile(false)
-                    openChat(selectedPartner)
-                  }}
-                >
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  Message
-                </Button>
-              </div>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
     </div>
