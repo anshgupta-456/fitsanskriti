@@ -55,19 +55,19 @@ const mockGyms: Gym[] = [
   {
     id: "1",
     name: "FitZone Premium",
-    address: "123 Main Street",
-    city: "New York, NY",
+    address: "73, Bhera Enclave",
+    city: "Delhi, India",
     rating: 4.8,
     reviewCount: 1247,
     distance: 0.8,
-    pricePerMonth: 89,
+    pricePerMonth: 2600,
     image: "/placeholder.svg",
     amenities: ["Parking", "Locker Rooms", "Showers", "WiFi", "Cafe"],
     operatingHours: {
       weekdays: "5:00 AM - 11:00 PM",
       weekends: "6:00 AM - 10:00 PM"
     },
-    phone: "+1 (555) 123-4567",
+    phone: "+91 98765 43210",
     website: "www.fitzonepremium.com",
     description: "Premium fitness center with state-of-the-art equipment and expert trainers.",
     equipment: ["Cardio Machines", "Weight Training", "Functional Training", "Swimming Pool"],
@@ -76,21 +76,21 @@ const mockGyms: Gym[] = [
   },
   {
     id: "2",
-    name: "PowerFit Gym",
-    address: "456 Oak Avenue",
-    city: "San Francisco, CA",
+    name: "cult.fit",
+    address: "76, Mianwali Enclave",
+    city: "Delhi, India",
     rating: 4.6,
     reviewCount: 892,
     distance: 1.2,
-    pricePerMonth: 65,
+    pricePerMonth: 7000,
     image: "/placeholder.svg",
     amenities: ["Parking", "Locker Rooms", "Showers", "WiFi"],
     operatingHours: {
       weekdays: "6:00 AM - 10:00 PM",
       weekends: "7:00 AM - 9:00 PM"
     },
-    phone: "+1 (555) 987-6543",
-    website: "www.powerfitgym.com",
+    phone: "+91 87654 32109",
+    website: "www.cultfit.com",
     description: "Community-focused gym with friendly atmosphere and affordable membership.",
     equipment: ["Cardio Machines", "Weight Training", "Functional Training"],
     classes: ["Yoga", "HIIT", "Strength Training"],
@@ -98,21 +98,21 @@ const mockGyms: Gym[] = [
   },
   {
     id: "3",
-    name: "Elite Fitness Center",
-    address: "789 Pine Street",
-    city: "Austin, TX",
+    name: "D-Fitness Club",
+    address: "2908 Guru Harikishan",
+    city: "Delhi, India",
     rating: 4.9,
     reviewCount: 2156,
     distance: 2.1,
-    pricePerMonth: 120,
+    pricePerMonth: 1100,
     image: "/placeholder.svg",
     amenities: ["Parking", "Locker Rooms", "Showers", "WiFi", "Cafe", "Sauna"],
     operatingHours: {
       weekdays: "4:00 AM - 12:00 AM",
       weekends: "5:00 AM - 11:00 PM"
     },
-    phone: "+1 (555) 456-7890",
-    website: "www.elitefitness.com",
+    phone: "+91 76543 21098",
+    website: "www.dfitnessclub.com",
     description: "Luxury fitness center with premium amenities and personal training services.",
     equipment: ["Cardio Machines", "Weight Training", "Functional Training", "Swimming Pool", "Spa"],
     classes: ["Yoga", "Pilates", "HIIT", "CrossFit", "Zumba", "Personal Training"],
@@ -161,10 +161,10 @@ export default function GymListing() {
     // Price filter
     if (priceFilter !== "all") {
       const priceRanges = {
-        "under-50": (gym: Gym) => gym.pricePerMonth < 50,
-        "50-80": (gym: Gym) => gym.pricePerMonth >= 50 && gym.pricePerMonth <= 80,
-        "80-120": (gym: Gym) => gym.pricePerMonth > 80 && gym.pricePerMonth <= 120,
-        "over-120": (gym: Gym) => gym.pricePerMonth > 120
+        "under-50": (gym: Gym) => gym.pricePerMonth < 2500,
+        "50-80": (gym: Gym) => gym.pricePerMonth >= 2500 && gym.pricePerMonth <= 8000,
+        "80-120": (gym: Gym) => gym.pricePerMonth > 8000 && gym.pricePerMonth <= 12000,
+        "over-120": (gym: Gym) => gym.pricePerMonth > 12000
       }
       filtered = filtered.filter(priceRanges[priceFilter as keyof typeof priceRanges])
     }
@@ -247,10 +247,10 @@ export default function GymListing() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Prices</SelectItem>
-                <SelectItem value="under-50">Under $50</SelectItem>
-                <SelectItem value="50-80">$50 - $80</SelectItem>
-                <SelectItem value="80-120">$80 - $120</SelectItem>
-                <SelectItem value="over-120">Over $120</SelectItem>
+                <SelectItem value="under-50">Under 2500</SelectItem>
+                <SelectItem value="50-80">2500 - 8000</SelectItem>
+                <SelectItem value="80-120">8000 - 12000</SelectItem>
+                <SelectItem value="over-120">Over 12000</SelectItem>
               </SelectContent>
             </Select>
 
@@ -345,7 +345,7 @@ export default function GymListing() {
 
                 {/* Price */}
                 <div className="mb-4">
-                  <span className="text-2xl font-bold text-green-600">${gym.pricePerMonth}</span>
+                  <span className="text-2xl font-bold text-green-600">₹{gym.pricePerMonth}</span>
                   <span className="text-sm text-gray-500">/month</span>
                 </div>
 
