@@ -13,10 +13,10 @@ if __name__ == '__main__':
     init_db()
     
     # Get port from environment variable or use default
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 5001))
     
     print(f"Starting FitSanskriti Backend Server on port {port}")
-    print("API Documentation available at: http://localhost:5000/")
+    print("API Documentation available at: http://localhost:5001/")
     print("Press Ctrl+C to stop the server")
     
     # Run the Flask app

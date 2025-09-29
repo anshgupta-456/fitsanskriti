@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -34,12 +35,47 @@ import GymListing from "./components/GymListing"
 import ExerciseScheduling from "./components/ExerciseScheduling"
 import DailyExercises from "./components/DailyExercises"
 import UserProfile from "./components/UserProfile"
+import Chatbot from "./components/Chatbot"
 
 export default function FitnessApp() {
   const { t } = useTranslation()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState("home")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
+  useEffect(() => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null
+      if (!token) {
+        router.replace('/login')
+      }
+    } catch {}
+  }, [router])
+
+  useEffect(() => {
+    const applyHash = () => {
+      try {
+        const hash = typeof window !== 'undefined' ? window.location.hash.replace('#', '') : ''
+        if (hash && ["home","gym-listing","exercise-scheduling","form-analysis","partners","tracker","profile"].includes(hash)) {
+          setActiveTab(hash)
+        }
+      } catch {}
+    }
+
+    const onNavigate = (e: Event) => {
+      const detail = (e as CustomEvent).detail as any
+      if (detail?.tab) setActiveTab(detail.tab)
+    }
+
+    applyHash()
+    window.addEventListener('hashchange', applyHash)
+    window.addEventListener('fitsanskriti:navigate', onNavigate as EventListener)
+    return () => {
+      window.removeEventListener('hashchange', applyHash)
+      window.removeEventListener('fitsanskriti:navigate', onNavigate as EventListener)
+    }
+  }, [])
 
   // Mock data for dashboard
   const todayStats = {
@@ -247,6 +283,9 @@ export default function FitnessApp() {
           {activeTab === "profile" && <UserProfile />}
         </div>
       </main>
+
+      {/* Floating Chatbot */}
+      <Chatbot />
 
       {/* Footer */}
       <footer className={`bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 mt-16 transition-all duration-300 ${

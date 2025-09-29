@@ -1,7 +1,11 @@
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 from datetime import datetime, timedelta
+from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
+import json
 import os
 import logging
 
@@ -16,6 +20,7 @@ CORS(app)
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(basedir, "fitness_app.db")}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 
 db = SQLAlchemy(app)
 
@@ -69,13 +74,22 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    username = db.Column(db.String(100), unique=True)
+    password_hash = db.Column(db.String(255))
     age = db.Column(db.Integer)
+    gender = db.Column(db.String(20))
+    height = db.Column(db.Float)
+    weight = db.Column(db.Float)
     fitness_level = db.Column(db.String(20))  # 'beginner', 'intermediate', 'advanced'
     location = db.Column(db.String(200))
     bio = db.Column(db.Text)
     avatar_url = db.Column(db.String(200))
+    goals = db.Column(db.Text)  # JSON array string
+    preferred_workout_time = db.Column(db.String(50))
+    availability_schedule = db.Column(db.Text)  # JSON object string
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_active = db.Column(db.DateTime, default=datetime.utcnow)
 
 class ScheduledWorkout(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -107,6 +121,46 @@ class Exercise(db.Model):
     muscle_groups = db.Column(db.Text)  # JSON string of muscle groups
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# Partner/Connections models
+class FitnessPartner(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    partner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, accepted, declined, blocked
+    compatibility_score = db.Column(db.Float)
+    match_factors = db.Column(db.Text)  # JSON array string
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_interaction = db.Column(db.DateTime)
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'partner_id', name='uq_user_partner'),
+    )
+
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    message_type = db.Column(db.String(50), default='text')
+    is_read = db.Column(db.Boolean, default=False)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+    read_at = db.Column(db.DateTime)
+
+class PartnerPreference(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    min_age = db.Column(db.Integer)
+    max_age = db.Column(db.Integer)
+    preferred_fitness_levels = db.Column(db.Text)  # JSON array
+    max_distance_km = db.Column(db.Integer)
+    preferred_workout_times = db.Column(db.Text)  # JSON array
+    preferred_goals = db.Column(db.Text)  # JSON array
+    gender_preference = db.Column(db.String(20))
+    language_preferences = db.Column(db.Text)  # JSON array
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # API Routes
 
 @app.route('/')
@@ -118,9 +172,336 @@ def index():
             'gyms': '/api/gyms',
             'workouts': '/api/workouts',
             'exercises': '/api/exercises',
-            'users': '/api/users'
+            'users': '/api/users',
+            'auth_register': '/api/auth/register',
+            'auth_login': '/api/auth/login',
+            'profile': '/api/profile',
+            'partners_recommendations': '/api/partners/recommendations',
+            'partners_search': '/api/partners/search',
+            'partners_connect': '/api/partners/connect'
         }
     })
+
+# -------- AUTH ---------
+def _generate_token(user_id: int):
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.utcnow() + timedelta(days=30)
+    }
+    return jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    data = request.get_json() or {}
+    required = ['name', 'email', 'password']
+    missing = [f for f in required if f not in data]
+    if missing:
+        return jsonify({'success': False, 'error': f'Missing fields: {", ".join(missing)}'}), 400
+
+    # Optional smart-connection fields
+    username = data.get('username') or data['email']
+    if User.query.filter((User.email == data['email']) | (User.username == username)).first():
+        return jsonify({'success': False, 'error': 'User already exists'}), 400
+
+    user = User(
+        name=data['name'],
+        email=data['email'],
+        username=username,
+        password_hash=generate_password_hash(data['password']),
+        gender=data.get('gender'),
+        height=data.get('height'),
+        weight=data.get('weight'),
+        age=data.get('age'),
+        fitness_level=data.get('fitness_level'),
+        location=data.get('location'),
+        bio=data.get('bio'),
+        avatar_url=data.get('avatar_url'),
+        goals=json.dumps(data.get('goals', [])) if isinstance(data.get('goals'), list) else data.get('goals'),
+        preferred_workout_time=data.get('preferred_workout_time'),
+        availability_schedule=json.dumps(data.get('availability_schedule', {})) if isinstance(data.get('availability_schedule'), dict) else data.get('availability_schedule'),
+        last_active=datetime.utcnow(),
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    token = _generate_token(user.id)
+    return jsonify({'success': True, 'token': token, 'user_id': user.id})
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    data = request.get_json() or {}
+    identifier = data.get('email') or data.get('username')
+    password = data.get('password')
+    if not identifier or not password:
+        return jsonify({'success': False, 'error': 'Email/username and password required'}), 400
+
+    user = User.query.filter((User.email == identifier) | (User.username == identifier)).first()
+    if not user or not user.password_hash or not check_password_hash(user.password_hash, password):
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+    user.last_active = datetime.utcnow()
+    db.session.commit()
+    token = _generate_token(user.id)
+    return jsonify({'success': True, 'token': token, 'user': {
+        'id': user.id,
+        'name': user.name,
+        'email': user.email,
+        'username': user.username,
+        'fitness_level': user.fitness_level,
+    }})
+
+@app.route('/api/profile', methods=['GET', 'PUT'])
+def profile():
+    # Simple token in Authorization: Bearer <token>
+    auth_header = request.headers.get('Authorization', '')
+    token = auth_header.replace('Bearer ', '') if auth_header.startswith('Bearer ') else None
+    if not token:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+    except Exception:
+        return jsonify({'success': False, 'error': 'Invalid token'}), 401
+
+    user = User.query.get(payload.get('user_id'))
+    if not user:
+        return jsonify({'success': False, 'error': 'User not found'}), 404
+
+    if request.method == 'GET':
+        return jsonify({'success': True, 'user': {
+            'id': user.id,
+            'name': user.name,
+            'email': user.email,
+            'username': user.username,
+            'age': user.age,
+            'gender': user.gender,
+            'height': user.height,
+            'weight': user.weight,
+            'fitness_level': user.fitness_level,
+            'location': user.location,
+            'bio': user.bio,
+            'avatar_url': user.avatar_url,
+            'goals': json.loads(user.goals) if user.goals else [],
+            'preferred_workout_time': user.preferred_workout_time,
+            'availability_schedule': json.loads(user.availability_schedule) if user.availability_schedule else {},
+        }})
+
+    # PUT update
+    data = request.get_json() or {}
+    for field in ['name','age','gender','height','weight','fitness_level','location','bio','avatar_url','preferred_workout_time']:
+        if field in data:
+            setattr(user, field, data[field])
+    if 'goals' in data:
+        user.goals = json.dumps(data['goals']) if isinstance(data['goals'], list) else data['goals']
+    if 'availability_schedule' in data:
+        user.availability_schedule = json.dumps(data['availability_schedule']) if isinstance(data['availability_schedule'], dict) else data['availability_schedule']
+    user.last_active = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'success': True})
+
+# -------- PARTNERS ---------
+@app.route('/api/partners/search', methods=['GET'])
+def partners_search():
+    # filters: q, fitness_level, min_age, max_age, location
+    q = request.args.get('q', '').strip().lower()
+    fitness_level = request.args.get('fitness_level')
+    min_age = request.args.get('min_age', type=int)
+    max_age = request.args.get('max_age', type=int)
+    location = request.args.get('location')
+
+    query = User.query.filter(User.is_active == True)
+    if q:
+        query = query.filter(db.or_(User.name.ilike(f"%{q}%"), User.username.ilike(f"%{q}%"), User.email.ilike(f"%{q}%")))
+    if fitness_level:
+        query = query.filter(User.fitness_level == fitness_level)
+    if min_age is not None:
+        query = query.filter(User.age >= min_age)
+    if max_age is not None:
+        query = query.filter(User.age <= max_age)
+    if location:
+        query = query.filter(User.location.ilike(f"%{location}%"))
+
+    users = query.order_by(User.last_active.desc()).limit(50).all()
+    results = []
+    for u in users:
+        results.append({
+            'id': u.id,
+            'name': u.name,
+            'username': u.username,
+            'fitness_level': u.fitness_level,
+            'goals': json.loads(u.goals) if u.goals else [],
+            'location': u.location,
+            'bio': u.bio,
+            'last_active': u.last_active.isoformat() if u.last_active else None,
+            'avatar_url': u.avatar_url,
+        })
+    return jsonify({'success': True, 'partners': results})
+
+@app.route('/api/partners/connect', methods=['POST'])
+def partners_connect():
+    data = request.get_json() or {}
+    user_id = data.get('user_id')
+    partner_id = data.get('partner_id')
+    if not user_id or not partner_id or user_id == partner_id:
+        return jsonify({'success': False, 'error': 'Invalid user/partner'}), 400
+
+    existing = FitnessPartner.query.filter_by(user_id=user_id, partner_id=partner_id).first()
+    if existing:
+        return jsonify({'success': False, 'error': f'Connection already {existing.status}'}), 400
+
+    fp = FitnessPartner(user_id=user_id, partner_id=partner_id, status='pending')
+    db.session.add(fp)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Connection request sent'})
+
+@app.route('/api/partners/recommendations', methods=['GET'])
+def partners_recommendations():
+    # Simple recommendations: top recent active users
+    limit = request.args.get('limit', 10, type=int)
+    users = User.query.filter_by(is_active=True).order_by(User.last_active.desc()).limit(limit).all()
+    recs = []
+    for u in users:
+        recs.append({
+            'id': u.id,
+            'name': u.name,
+            'username': u.username,
+            'fitness_level': u.fitness_level,
+            'goals': json.loads(u.goals) if u.goals else [],
+            'location': u.location,
+            'bio': u.bio,
+            'last_active': u.last_active.isoformat() if u.last_active else None,
+            'avatar_url': u.avatar_url,
+        })
+    return jsonify({'success': True, 'recommendations': recs})
+
+@app.route('/api/partners/connections', methods=['GET'])
+def partners_connections():
+    try:
+        user_id = request.args.get('user_id', type=int)
+        status = request.args.get('status', 'accepted')
+        if not user_id:
+            return jsonify({'success': False, 'error': 'user_id is required'}), 400
+
+        # Fetch connections where the user is either requester or partner
+        q = FitnessPartner.query.filter(
+            db.or_(
+                FitnessPartner.user_id == user_id,
+                FitnessPartner.partner_id == user_id
+            )
+        )
+        if status:
+            q = q.filter(FitnessPartner.status == status)
+
+        fps = q.order_by(FitnessPartner.updated_at.desc()).limit(100).all()
+
+        partners = []
+        for fp in fps:
+            # Determine the other user's id
+            other_id = fp.partner_id if fp.user_id == user_id else fp.user_id
+            other = User.query.get(other_id)
+            if not other:
+                continue
+            partners.append({
+                'id': other.id,
+                'name': other.name,
+                'username': other.username,
+                'fitness_level': other.fitness_level,
+                'goals': json.loads(other.goals) if other.goals else [],
+                'location': other.location,
+                'bio': other.bio,
+                'last_active': other.last_active.isoformat() if other.last_active else None,
+                'avatar_url': other.avatar_url,
+            })
+
+        return jsonify({'success': True, 'connections': partners})
+    except Exception as e:
+        logger.error(f"Error fetching connections: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/partners/requests', methods=['GET'])
+def partners_requests():
+    try:
+        user_id = request.args.get('user_id', type=int)
+        if not user_id:
+            return jsonify({'success': False, 'error': 'user_id is required'}), 400
+
+        # Pending requests sent TO this user
+        fps = FitnessPartner.query.filter_by(partner_id=user_id, status='pending').order_by(FitnessPartner.created_at.desc()).all()
+        reqs = []
+        for fp in fps:
+            sender = User.query.get(fp.user_id)
+            if not sender:
+                continue
+            reqs.append({
+                'id': fp.id,
+                'from': {
+                    'id': sender.id,
+                    'name': sender.name,
+                    'username': sender.username,
+                    'avatar_url': sender.avatar_url,
+                    'fitness_level': sender.fitness_level,
+                },
+                'message': 'Wants to connect',
+                'timestamp': fp.created_at.isoformat(),
+            })
+
+        return jsonify({'success': True, 'requests': reqs})
+    except Exception as e:
+        logger.error(f"Error fetching partner requests: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/partners/accept', methods=['POST'])
+def partners_accept():
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id')
+        partner_id = data.get('partner_id')
+        if not user_id or not partner_id:
+            return jsonify({'success': False, 'error': 'user_id and partner_id are required'}), 400
+
+        fp = FitnessPartner.query.filter_by(user_id=partner_id, partner_id=user_id, status='pending').first()
+        if not fp:
+            return jsonify({'success': False, 'error': 'No pending request found'}), 404
+
+        fp.status = 'accepted'
+        fp.updated_at = datetime.utcnow()
+
+        # Optional: ensure reciprocal record exists for easier querying
+        reciprocal = FitnessPartner.query.filter_by(user_id=user_id, partner_id=partner_id).first()
+        if not reciprocal:
+            reciprocal = FitnessPartner(user_id=user_id, partner_id=partner_id, status='accepted', created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+            db.session.add(reciprocal)
+        else:
+            reciprocal.status = 'accepted'
+            reciprocal.updated_at = datetime.utcnow()
+
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error accepting partner request: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/partners/decline', methods=['POST'])
+def partners_decline():
+    try:
+        data = request.get_json() or {}
+        user_id = data.get('user_id')
+        partner_id = data.get('partner_id')
+        if not user_id or not partner_id:
+            return jsonify({'success': False, 'error': 'user_id and partner_id are required'}), 400
+
+        fp = FitnessPartner.query.filter_by(user_id=partner_id, partner_id=user_id, status='pending').first()
+        if not fp:
+            return jsonify({'success': False, 'error': 'No pending request found'}), 404
+
+        fp.status = 'declined'
+        fp.updated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error declining partner request: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Gym endpoints
 @app.route('/api/gyms', methods=['GET'])
@@ -432,9 +813,31 @@ def get_exercises():
 
 # Initialize database
 def init_db():
-    """Initialize the database with sample data"""
+    """Initialize the database with sample data and ensure columns exist"""
     with app.app_context():
         db.create_all()
+
+        # Lightweight column additions for existing SQLite DBs
+        def _ensure_column(table: str, column: str, type_sql: str):
+            try:
+                res = db.session.execute(text(f"PRAGMA table_info({table})"))
+                cols = [row[1] for row in res.fetchall()]
+                if column not in cols:
+                    db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {type_sql}"))
+                    db.session.commit()
+                    logger.info(f"Added column {table}.{column}")
+            except Exception as e:
+                logger.warning(f"Skip adding column {table}.{column}: {e}")
+
+        _ensure_column('user', 'username', 'VARCHAR(100)')
+        _ensure_column('user', 'password_hash', 'VARCHAR(255)')
+        _ensure_column('user', 'goals', 'TEXT')
+        _ensure_column('user', 'preferred_workout_time', 'VARCHAR(50)')
+        _ensure_column('user', 'availability_schedule', 'TEXT')
+        _ensure_column('user', 'last_active', 'DATETIME')
+        _ensure_column('user', 'gender', 'VARCHAR(20)')
+        _ensure_column('user', 'height', 'FLOAT')
+        _ensure_column('user', 'weight', 'FLOAT')
         
         # Check if data already exists
         if Gym.query.first():
@@ -590,5 +993,5 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5001)
 

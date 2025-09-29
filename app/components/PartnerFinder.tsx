@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { useAuth } from "../contexts/AuthContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -122,6 +123,7 @@ const mockCurrentPartners: Partner[] = [mockPartners[2], mockPartners[3]]
 let messageIdCounter = 1
 
 export default function PartnerFinder() {
+  const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [levelFilter, setLevelFilter] = useState("all")
   const [goalFilter, setGoalFilter] = useState("all")
@@ -189,69 +191,80 @@ export default function PartnerFinder() {
     fetchPartners()
   }, [searchQuery, levelFilter, goalFilter])
 
+  useEffect(() => {
+    const fetchConnections = async () => {
+      try {
+        const base = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'
+        const res = await fetch(`${base}/api/partners/connections?user_id=${user?.id}&status=accepted`)
+        const data = await res.json()
+        if (res.ok && data.success) {
+          const mapped = (data.connections || []).map((p: any) => ({
+            id: String(p.id),
+            name: p.name,
+            username: p.username || p.email,
+            avatar: p.avatar_url || "/placeholder.svg?height=40&width=40",
+            fitnessLevel: (p.fitness_level || 'Beginner').charAt(0).toUpperCase() + (p.fitness_level || 'Beginner').slice(1),
+            goals: p.goals || [],
+            location: p.location || '',
+            distance: 0,
+            lastActive: p.last_active ? new Date(p.last_active).toLocaleString() : 'recently',
+            bio: p.bio || '',
+            workoutsCompleted: 0,
+            isOnline: true,
+          })) as Partner[]
+          setCurrentPartners(mapped)
+        }
+      } catch {}
+    }
+    if (user?.id) fetchConnections()
+  }, [user?.id])
+
   const fetchPartners = async () => {
     setIsLoading(true)
     setError(null)
-
     try {
-      // Simulate API call
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(true)
-        }, 500)
-      })
-
-      let filteredPartners = mockPartners.filter((partner) => !currentPartners.some((cp) => cp.id === partner.id))
-
-      if (searchQuery) {
-        filteredPartners = filteredPartners.filter(
-          (partner) =>
-            partner.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            partner.username.toLowerCase().includes(searchQuery.toLowerCase()),
-        )
-      }
-
-      if (levelFilter !== "all") {
-        filteredPartners = filteredPartners.filter((partner) => partner.fitnessLevel.toLowerCase() === levelFilter)
-      }
-
-      if (goalFilter !== "all") {
-        filteredPartners = filteredPartners.filter((partner) =>
-          partner.goals.some((goal) => goal.toLowerCase().includes(goalFilter.toLowerCase())),
-        )
-      }
-
-      setPartners(filteredPartners)
+      const params = new URLSearchParams()
+      if (searchQuery) params.set("q", searchQuery)
+      if (levelFilter !== "all") params.set("fitness_level", levelFilter)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'}/api/partners/search?${params.toString()}`)
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || data.message || 'Failed to load')
+      const mapped = (data.partners || []).map((p: any) => ({
+        id: String(p.id),
+        name: p.name,
+        username: p.username || p.email,
+        avatar: p.avatar_url || "/placeholder.svg?height=40&width=40",
+        fitnessLevel: (p.fitness_level || 'Beginner').charAt(0).toUpperCase() + (p.fitness_level || 'Beginner').slice(1),
+        goals: p.goals || [],
+        location: p.location || '',
+        distance: 0,
+        lastActive: p.last_active ? new Date(p.last_active).toLocaleString() : 'recently',
+        bio: p.bio || '',
+        workoutsCompleted: 0,
+        isOnline: true,
+      })) as Partner[]
+      setPartners(mapped.filter((partner) => !currentPartners.some((cp) => cp.id === partner.id)))
     } catch (error) {
       console.error("Error fetching partners:", error)
       setError(error instanceof Error ? error.message : "Failed to load partners")
-      setPartners(mockPartners.filter((partner) => !currentPartners.some((cp) => cp.id === partner.id)))
+      setPartners([])
     } finally {
       setIsLoading(false)
     }
   }
 
   const sendPartnerRequest = async (partnerId: string) => {
-    console.log("sendPartnerRequest called with partnerId:", partnerId)
     setConnectingPartners((prev) => new Set(prev).add(partnerId))
-
     try {
-      // Simulate API call - always succeed for testing
-      await new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(true)
-        }, 1000)
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'}/api/partners/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user?.id, partner_id: Number(partnerId) }),
       })
-
-      // Remove partner from list after successful connection
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || data.message || 'Failed to connect')
       setPartners(partners.filter((p) => p.id !== partnerId))
-
-      const partner = partners.find((p) => p.id === partnerId)
-      if (partner) {
-        console.log(`Partner request sent to ${partner.name}`)
-        // Add a success message or toast here
-        setError(null) // Clear any previous errors
-      }
+      setError(null)
     } catch (error) {
       console.error("Error sending partner request:", error)
       setError(error instanceof Error ? error.message : "Failed to send partner request")
@@ -366,11 +379,34 @@ export default function PartnerFinder() {
 
   const acceptRequest = async (requestId: string) => {
     try {
-      const request = requests.find((r) => r.id === requestId)
-      if (request) {
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        setCurrentPartners([...currentPartners, request.from])
-        setRequests(requests.filter((r) => r.id !== requestId))
+      const req = requests.find((r) => r.id === requestId)
+      if (!req) return
+      const base = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'
+      const res = await fetch(`${base}/api/partners/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user?.id, partner_id: Number(req.from.id) }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed')
+
+      // refresh current partners
+      setRequests((prev) => prev.filter((r) => r.id !== requestId))
+      await fetchPartners()
+      // also refresh connections list
+      const base2 = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'
+      const res2 = await fetch(`${base2}/api/partners/connections?user_id=${user?.id}&status=accepted`)
+      const data2 = await res2.json()
+      if (res2.ok && data2.success) {
+        const mapped = (data2.connections || []).map((p: any) => ({
+          id: String(p.id), name: p.name, username: p.username || p.email,
+          avatar: p.avatar_url || "/placeholder.svg?height=40&width=40",
+          fitnessLevel: (p.fitness_level || 'Beginner').charAt(0).toUpperCase() + (p.fitness_level || 'Beginner').slice(1),
+          goals: p.goals || [], location: p.location || '', distance: 0,
+          lastActive: p.last_active ? new Date(p.last_active).toLocaleString() : 'recently',
+          bio: p.bio || '', workoutsCompleted: 0, isOnline: true,
+        })) as Partner[]
+        setCurrentPartners(mapped)
       }
     } catch (error) {
       console.error("Error accepting request:", error)
@@ -379,11 +415,18 @@ export default function PartnerFinder() {
   }
 
   const declineRequest = async (requestId: string) => {
-    console.log("declineRequest called with requestId:", requestId)
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      setRequests(requests.filter((r) => r.id !== requestId))
-      console.log("Request declined successfully")
+      const req = requests.find((r) => r.id === requestId)
+      if (!req) return
+      const base = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'
+      const res = await fetch(`${base}/api/partners/decline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: user?.id, partner_id: Number(req.from.id) }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed')
+      setRequests((prev) => prev.filter((r) => r.id !== requestId))
     } catch (error) {
       console.error("Error declining request:", error)
       setError("Failed to decline partner request")
@@ -599,8 +642,7 @@ export default function PartnerFinder() {
                             onClick={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              console.log("BUTTON CLICKED!")
-                              window.alert("Button clicked for partner: " + partner.name)
+                              sendPartnerRequest(partner.id)
                             }}
                             className="gap-1 bg-red-500 hover:bg-red-600 text-white"
                             style={{ zIndex: 9999, pointerEvents: 'auto' }}

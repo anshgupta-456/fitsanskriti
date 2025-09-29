@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
+import { useAuth } from "../contexts/AuthContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -56,76 +57,31 @@ interface ChatMessage {
   timestamp: string
 }
 
-// Mock data for Fit Connect
-const fitConnections: Connection[] = [
-  {
-    id: "1",
-    name: "Sarah Johnson",
-    avatar: "/placeholder-user.jpg",
-    age: 25,
-    location: "New York, NY",
-    fitnessLevel: "Advanced",
-    goals: ["Weight Loss", "Strength"],
-    bio: "Looking for a consistent workout partner for morning sessions. Love weightlifting and cardio!",
-    rating: 4.8,
-    isOnline: true,
-    lastSeen: "2 min ago",
-    lastMessage: "Ready for our workout tomorrow?",
-    unreadCount: 2
-  },
-  {
-    id: "2",
-    name: "Mike Chen",
-    avatar: "/placeholder-user.jpg",
-    age: 28,
-    location: "San Francisco, CA",
-    fitnessLevel: "Intermediate",
-    goals: ["Muscle Gain", "Endurance"],
-    bio: "Marathon runner seeking training partners. Available evenings and weekends.",
-    rating: 4.9,
-    isOnline: true,
-    lastSeen: "5 min ago",
-    lastMessage: "Great session today! 💪",
-    unreadCount: 0
-  },
-  {
-    id: "3",
-    name: "Emma Wilson",
-    avatar: "/placeholder-user.jpg",
-    age: 22,
-    location: "Austin, TX",
-    fitnessLevel: "Beginner",
-    goals: ["General Fitness", "Weight Loss"],
-    bio: "New to fitness and looking for a supportive partner to start this journey together!",
-    rating: 4.7,
-    isOnline: false,
-    lastSeen: "1 hour ago",
-    lastMessage: "Thanks for the motivation!",
-    unreadCount: 1
-  },
-  {
-    id: "4",
-    name: "Alex Rodriguez",
-    avatar: "/placeholder-user.jpg",
-    age: 30,
-    location: "Miami, FL",
-    fitnessLevel: "Advanced",
-    goals: ["Bodybuilding", "Strength"],
-    bio: "Competitive bodybuilder looking for serious training partners.",
-    rating: 4.9,
-    isOnline: false,
-    lastSeen: "3 hours ago",
-    lastMessage: "Let's hit the gym this weekend",
-    unreadCount: 0
-  }
-]
+// Will be populated from backend recommendations
+const fitConnections: Connection[] = []
 
 const mockChatMessages: { [key: string]: ChatMessage[] } = {
   "1": [
     {
       id: "1",
+      senderId: "2",
+      senderName: "Akaksha Singh",
+      message: "Want to go for a run this weekend?",
+      timestamp: "1 hour ago"
+    },
+    {
+      id: "2",
+      senderId: "user",
+      senderName: "You",
+      message: "Absolutely! See you at 7 AM at the gym.",
+      timestamp: "5 min ago"
+    }
+  ],
+  "2": [
+    {
+      id: "1",
       senderId: "1",
-      senderName: "Sarah Johnson",
+      senderName: "Aaniya Tomar",
       message: "Hey! Ready for our workout session tomorrow?",
       timestamp: "10 min ago"
     },
@@ -141,12 +97,42 @@ const mockChatMessages: { [key: string]: ChatMessage[] } = {
 
 export default function HomePage() {
   const { t } = useTranslation()
+  const { user } = useAuth()
   const [connections, setConnections] = useState<Connection[]>(fitConnections)
   const [chatMessages, setChatMessages] = useState<{ [key: string]: ChatMessage[] }>(mockChatMessages)
   const [newMessage, setNewMessage] = useState("")
   const [sendingMessage, setSendingMessage] = useState(false)
   const [selectedChatPartner, setSelectedChatPartner] = useState<Connection | null>(null)
   const [isChatOpen, setIsChatOpen] = useState(false)
+
+  useEffect(() => {
+    const fetchConnections = async () => {
+      try {
+        if (!user?.id) return
+        const base = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'
+        const res = await fetch(`${base}/api/partners/connections?user_id=${user.id}&status=accepted`)
+        const data = await res.json()
+        if (!res.ok || !data.success) throw new Error(data.error || data.message || 'Failed to load')
+        const mapped: Connection[] = (data.connections || []).map((p: any) => ({
+          id: String(p.id),
+          name: p.name,
+          avatar: p.avatar_url || "/placeholder-user.jpg",
+          age: 0,
+          location: p.location || '',
+          fitnessLevel: (p.fitness_level || 'Beginner').charAt(0).toUpperCase() + (p.fitness_level || 'Beginner').slice(1),
+          goals: p.goals || [],
+          bio: p.bio || '',
+          rating: 4.7,
+          isOnline: true,
+          lastSeen: 'recently',
+        }))
+        setConnections(mapped)
+      } catch (e) {
+        // keep empty on failure
+      }
+    }
+    fetchConnections()
+  }, [user?.id])
 
   const openChat = (connection: Connection) => {
     setSelectedChatPartner(connection)
@@ -254,7 +240,15 @@ export default function HomePage() {
                 Your fitness connections and chat with workout partners
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => {
+              // Navigate to partners tab by dispatching a custom event
+              try {
+                window.dispatchEvent(new CustomEvent('fitsanskriti:navigate', { detail: { tab: 'partners' } }))
+              } catch {}
+              
+              // As a fallback, try changing hash for client logic
+              try { location.hash = '#partners' } catch {}
+            }}>
               <Plus className="h-4 w-4 mr-2" />
               Find More
             </Button>

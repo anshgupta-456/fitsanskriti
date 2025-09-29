@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,25 +29,58 @@ import {
   Clock,
   Activity,
 } from "lucide-react"
+import { useAuth } from "../contexts/AuthContext"
 
 export default function UserProfile() {
   const { t } = useTranslation()
+  const { token, refreshProfile } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
   const [profileData, setProfileData] = useState({
-    firstName: "Ayush",
-    lastName: "Kaushik",
-    email: "ayushkaushik0123@gmail.com",
-    age: 20,
-    height: 170, // cm
-    weight: 60, // kg
-    fitnessLevel: "intermediate",
-    goals: ["Body-Sculpting", "muscle-gain"],
-    location: "New Delhi",
-    bio: "Fitness enthusiast looking to stay healthy and motivated!",
-    workoutSchedule: ["monday", "wednesday", "friday"],
-    preferredWorkoutTime: "morning",
-    equipment: ["dumbbells", "resistance-bands", "yoga-mat"],
+    firstName: "",
+    lastName: "",
+    email: "",
+    age: 0,
+    height: 0, // cm
+    weight: 0, // kg
+    gender: "",
+    fitnessLevel: "beginner",
+    goals: [] as string[],
+    location: "",
+    bio: "",
+    workoutSchedule: [] as string[],
+    preferredWorkoutTime: "",
+    equipment: [] as string[],
   })
+
+  useEffect(() => {
+    const load = async () => {
+      if (!token) return
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'}/api/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const u = data.user
+        const [firstName, ...rest] = (u.name || '').split(' ')
+        setProfileData((prev) => ({
+          ...prev,
+          firstName: firstName || '',
+          lastName: rest.join(' '),
+          email: u.email || '',
+          age: u.age || 0,
+          height: u.height || 0,
+          weight: u.weight || 0,
+          gender: u.gender || '',
+          fitnessLevel: u.fitness_level || 'beginner',
+          goals: u.goals || [],
+          location: u.location || '',
+          bio: u.bio || '',
+          preferredWorkoutTime: u.preferred_workout_time || '',
+        }))
+      }
+    }
+    load()
+  }, [token])
 
   const [settings, setSettings] = useState({
     notifications: {
@@ -138,10 +171,27 @@ export default function UserProfile() {
     { date: "2024-01-18", type: "milestone", description: "Reached 150 total workouts", icon: "🎯" },
   ]
 
-  const handleSaveProfile = () => {
-    // Save profile data
+  const handleSaveProfile = async () => {
+    if (!token) return
+    const payload: any = {
+      name: `${profileData.firstName} ${profileData.lastName}`.trim(),
+      age: profileData.age,
+      fitness_level: profileData.fitnessLevel,
+      location: profileData.location,
+      bio: profileData.bio,
+      goals: profileData.goals,
+      preferred_workout_time: profileData.preferredWorkoutTime,
+      height: profileData.height,
+      weight: profileData.weight,
+      gender: profileData.gender,
+    }
+    await fetch(`${process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5001'}/api/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    })
+    await refreshProfile()
     setIsEditing(false)
-    // Show success message
   }
 
   const handleSettingChange = (category: string, setting: string, value: any) => {
