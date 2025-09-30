@@ -69,43 +69,7 @@ This AI-powered fitness app is designed to break common barriers in digital fitn
 - Node.js 18+ and npm/pnpm
 - Python 3.8+ (for AI backend)
 
-### Installation
 
-1. Clone the repository:
-bash
-git clone https://github.com/NISHANT-GUPTA1/Fitness_Health_Monitoring_AI.git
-cd Fitness_Health_Monitoring_AI
-
-
-2. Install dependencies:
-
-npm install
-# or
-pnpm install
-
-
-3. Run the development server:
-bash
-npm run dev
-# or
-pnpm dev
-
-
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### Backend Setup
-
-1. Navigate to the scripts directory and set up the Python backend:
-bash
-cd scripts
-pip install flask
-python flask_backend.py
-
-
-2. Set up the database:
-bash
-# Run the SQL setup script in your preferred database management system
-# File: scripts/database_setup.sql
 
 ## Project Structure
 
@@ -135,24 +99,11 @@ bash
 - *UserProfile*: Manage user information and preferences
 - *WorkoutPlanner*: Create and schedule workout routines
 
-## Contributing
 
-1. Fork the repository
-2. Create a feature branch (git checkout -b feature/AmazingFeature)
-3. Commit your changes (git commit -m 'Add some AmazingFeature')
-4. Push to the branch (git push origin feature/AmazingFeature)
-5. Open a Pull Request
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Contact
 
-Your Name - pentabits
 
-Project Link: [(https://fitnesshealthmonitoringai.netlify.app/)]
-
----
-
-[⬆ Back to Top](#fitness-health-monitoring-ai)
